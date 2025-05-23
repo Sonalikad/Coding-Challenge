@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Store Ratings App</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root" class="min-h-screen bg-gray-100"></div>
+
+  <!-- Simulated PostgreSQL Database Schema (Run this in PostgreSQL) -->
+  <!--
+  CREATE DATABASE store_ratings;
+  \c store_ratings;
+
+  CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(60) NOT NULL CHECK (LENGTH(name) >= 20 AND LENGTH(name) <= 60),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(19) NOT NULL CHECK (LENGTH(password) >= 8 AND password ~ '[A-Z]' AND password ~ '[!@#$%^&*]'),
+    role VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'USER', 'OWNER')),
+    address VARCHAR(255)
+  );
+
+  CREATE TABLE stores (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(60) NOT NULL,
+    address VARCHAR(255) NOT NULL,
+    owner_id INTEGER REFERENCES users(id)
+  );
+
+  CREATE TABLE ratings (
+    id SERIAL PRIMARY KEY,
+    store_id INTEGER REFERENCES stores(id),
+    user_id INTEGER REFERENCES users(id),
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    UNIQUE(store_id, user_id)
+  );
+
+  -- Sample Data
+  INSERT INTO users (name, email, password, role, address) VALUES
+  ('System Administrator Long Name', 'admin@example.com', 'Password!123', 'ADMIN', '123 Admin St'),
+  ('Normal User Very Long Name Here', 'user@example.com', 'Password!123', 'USER', '456 User Ave'),
+  ('Store Owner Very Long Name Here', 'owner@example.com', 'Password!123', 'OWNER', '789 Owner Blvd');
+
+  INSERT INTO stores (name, address, owner_id) VALUES
+  ('Store A', '123 Store St', 3);
+
+  INSERT INTO ratings (store_id, user_id, rating) VALUES
+  (1, 2, 4);
+  -->
+
+  <!-- Simulated Backend API (Express.js) -->
+  <!-- In a real app, this would be a separate server running on Node.js -->
+  <script>
+    // Simulated API data (replace with real Express.js server in production)
+    const mockDatabase = {
+      users: [
+        { id: 1, name: 'System Administrator Long Name', email: 'admin@example.com', password: 'Password!123', role: 'ADMIN', address: '123 Admin St' },
+        { id: 2, name: 'Normal User Very Long Name Here', email: 'user@example.com', password: 'Password!123', role: 'USER', address: '456 User Ave' },
+        { id: 3, name: 'Store Owner Very Long Name Here', email: 'owner@example.com', password: 'Password!123', role: 'OWNER', address: '789 Owner Blvd' }
+      ],
+      stores: [
+        { id: 1, name: 'Store A', address: '123 Store St', owner_id: 3 }
+      ],
+      ratings: [
+        { id: 1, store_id: 1, user_id: 2, rating: 4 }
+      ]
+    };
+
+    // Simulated API functions
+    const api = {
+      login: (email, password) => {
+        const user = mockDatabase.users.find(u => u.email === email && u.password === password);
+        return user ? { success: true, user } : { success: false, message: 'Invalid credentials' };
+      },
+      signup: (user) => {
+        mockDatabase.users.push({ id: mockDatabase.users.length + 1, ...user });
+        return { success: true };
+      },
+      addStore: (store) => {
+        mockDatabase.stores.push({ id: mockDatabase.stores.length + 1, ...store });
+        return { success: true };
+      },
+      addRating: (rating) => {
+        mockDatabase.ratings.push({ id: mockDatabase.ratings.length + 1, ...rating });
+        return { success: true };
+      },
+      getStores: () => mockDatabase.stores,
+      getUsers: () => mockDatabase.users,
+      getRatings: () => mockDatabase.ratings,
+      updatePassword: (userId, newPassword) => {
+        const user = mockDatabase.users.find(u => u.id === userId);
+        if (user) user.password = newPassword;
+        return { success: true };
+      }
+    };
+  </script>
+
+  <!-- React Frontend -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const App = () => {
+      const [currentUser, setCurrentUser] = useState(null);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [name, setName] = useState('');
+      const [address, setAddress] = useState('');
+      const [role, setRole] = useState('USER');
+      const [newPassword, setNewPassword] = useState('');
+      const [storeName, setStoreName] = useState('');
+      const [storeAddress, setStoreAddress] = useState('');
+      const [rating, setRating] = useState('');
+      const [search, setSearch] = useState('');
+      const [sortField, setSortField] = useState('name');
+      const [sortOrder, setSortOrder] = useState('asc');
+
+      // Form validation functions
+      const validateName = (name) => name.length >= 20 && name.length <= 60;
+      const validatePassword = (password) => password.length >= 8 && password.length <= 19 && /[A-Z]/.test(password) && /[!@#$%^&*]/.test(password);
+      const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+      // Login handler
+      const handleLogin = () => {
+        const response = api.login(email, password);
+        if (response.success) {
+          setCurrentUser(response.user);
+        } else {
+          alert(response.message);
+        }
+      };
+
+      // Signup handler
+      const handleSignup = () => {
+        if (!validateName(name)) {
+          alert('Name must be between 20 and 60 characters');
+          return;
+        }
+        if (!validateEmail(email)) {
+          alert('Invalid email format');
+          return;
+        }
+        if (!validatePassword(password)) {
+          alert('Password must be 8-19 characters, with at least one uppercase letter and one special character');
+          return;
+        }
+        const response = api.signup({ name, email, password, role, address });
+        if (response.success) {
+          alert('Signup successful! Please log in.');
+        }
+      };
+
+      // Update password handler
+      const handleUpdatePassword = () => {
+        if (!validatePassword(newPassword)) {
+          alert('Password must be 8-19 characters, with at least one uppercase letter and one special character');
+          return;
+        }
+        api.updatePassword(currentUser.id, newPassword);
+        alert('Password updated successfully');
+      };
+
+      // Add store handler (Admin only)
+      const handleAddStore = () => {
+        api.addStore({ name: storeName, address: storeAddress, owner_id: currentUser.id });
+        alert('Store added successfully');
+      };
+
+      // Submit rating handler (User only)
+      const handleSubmitRating = (storeId) => {
+        if (rating < 1 || rating > 5) {
+          alert('Rating must be between 1 and 5');
+          return;
+        }
+        api.addRating({ store_id: storeId, user_id: currentUser.id, rating: parseInt(rating) });
+        alert('Rating submitted successfully');
+      };
+
+      // Sorting function
+      const sortData = (data, field, order) => {
+        return [...data].sort((a, b) => {
+          const valA = a[field].toString().toLowerCase();
+          const valB = b[field].toString().toLowerCase();
+          if (order === 'asc') return valA > valB ? 1 : -1;
+          return valA < valB ? 1 : -1;
+        });
+      };
+
+      // Filter and sort stores
+      const filteredStores = api.getStores().filter(store =>
+        store.name.toLowerCase().includes(search.toLowerCase()) ||
+        store.address.toLowerCase().includes(search.toLowerCase())
+      );
+      const sortedStores = sortData(filteredStores, sortField, sortOrder);
+
+      // Calculate average rating for a store
+      const getAverageRating = (storeId) => {
+        const storeRatings = api.getRatings().filter(r => r.store_id === storeId);
+        if (storeRatings.length === 0) return 0;
+        const total = storeRatings.reduce((sum, r) => sum + r.rating, 0);
+        return (total / storeRatings.length).toFixed(1);
+      };
+
+      // Get user's rating for a store
+      const getUserRating = (storeId) => {
+        const rating = api.getRatings().find(r => r.store_id === storeId && r.user_id === currentUser.id);
+        return rating ? rating.rating : 'Not rated';
+      };
+
+      // Render based on user role
+      if (!currentUser) {
+        return (
+          <div className="flex flex-col items-center justify-center h-screen">
+            <h1 className="text-3xl font-bold mb-4">Store Ratings App</h1>
+            <div className="bg-white p-6 rounded shadow-md w-96">
+              <h2 className="text-xl font-semibold mb-4">Login</h2>
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 mb-4 border rounded"
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-2 mb-4 border rounded"
+              />
+              <button onClick={handleLogin} className="w-full bg-blue-500 text-white p-2 rounded">
+                Login
+              </button>
+              <h2 className="text-xl font-semibold mt-6 mb-4">Signup</h2>
+              <input
+                type="text"
+                placeholder="Name (20-60 characters)"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-2 mb-4 border rounded"
+              />
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 mb-4 border rounded"
+              />
+              <input
+                type="password"
+                placeholder="Password (8-19 chars, 1 uppercase, 1 special)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-2 mb-4 border rounded"
+              />
+              <input
+                type="text"
+                placeholder="Address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full p-2 mb-4 border rounded"
+              />
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full p-2 mb-4 border rounded"
+              >
+                <option value="USER">Normal User</option>
+                <option value="OWNER">Store Owner</option>
+                <option value="ADMIN">System Administrator</option>
+              </select>
+              <button onClick={handleSignup} className="w-full bg-green-500 text-white p-2 rounded">
+                Signup
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // System Administrator View
+      if (currentUser.role === 'ADMIN') {
+        return (
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+              <button onClick={() => setCurrentUser(null)} className="bg-red-500 text-white p-2 rounded">
+                Logout
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-white p-4 rounded shadow">
+                <h2 className="text-lg font-semibold">Total Users: {api.getUsers().length}</h2>
+              </div>
+              <div className="bg-white p-4 rounded shadow">
+                <h2 className="text-lg font-semibold">Total Stores: {api.getStores().length}</h2>
+              </div>
+            </div>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">Add New Store</h2>
+              <input
+                type="text"
+                placeholder="Store Name"
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                className="p-2 border rounded mr-2"
+              />
+              <input
+                type="text"
+                placeholder="Store Address"
+                value={storeAddress}
+                onChange={(e) => setStoreAddress(e.target.value)}
+                className="p-2 border rounded mr-2"
+              />
+              <button onClick={handleAddStore} className="bg-blue-500 text-white p-2 rounded">
+                Add Store
+              </button>
+            </div>
+            <h2 className="text-lg font-semibold mb-2">Stores</h2>
+            <table className="w-full bg-white rounded shadow">
+              <thead>
+                <tr>
+                  <th className="p-2 border">Name</th>
+                  <th className="p-2 border">Address</th>
+                  <th className="p-2 border">Average Rating</th>
+                </tr>
+              </thead>
+              <tbody>
+                {api.getStores().map(store => (
+                  <tr key={store.id}>
+                    <td className="p-2 border">{store.name}</td>
+                    <td className="p-2 border">{store.address}</td>
+                    <td className="p-2 border">{getAverageRating(store.id)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <h2 className="text-lg font-semibold mt-4 mb-2">Users</h2>
+            <table className="w-full bg-white rounded shadow">
+              <thead>
+                <tr>
+                  <th className="p-2 border">Name</th>
+                  <th className="p-2 border">Email</th>
+                  <th className="p-2 border">Address</th>
+                  <th className="p-2 border">Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {api.getUsers().map(user => (
+                  <tr key={user.id}>
+                    <td className="p-2 border">{user.name}</td>
+                    <td className="p-2 border">{user.email}</td>
+                    <td className="p-2 border">{user.address}</td>
+                    <td className="p-2 border">{user.role}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      // Normal User View
+      if (currentUser.role === 'USER') {
+        return (
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h1 className="text-2xl font-bold">Welcome, {currentUser.name}</h1>
+              <button onClick={() => setCurrentUser(null)} className="bg-red-500 text-white p-2 rounded">
+                Logout
+              </button>
+            </div>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">Update Password</h2>
+              <input
+                type="password"
+                placeholder="New Password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="p-2 border rounded mr-2"
+              />
+              <button onClick={handleUpdatePassword} className="bg-blue-500 text-white p-2 rounded">
+                Update Password
+              </button>
+            </div>
+            <div className="mb-4">
+              <input
+                type="text"
+                placeholder="Search stores by name or address"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="p-2 border rounded w-full"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="mr-2">Sort by:</label>
+              <select
+                value={sortField}
+                onChange={(e) => setSortField(e.target.value)}
+                className="p-2 border rounded mr-2"
+              >
+                <option value="name">Name</option>
+                <option value="address">Address</option>
+              </select>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className="p-2 border rounded"
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
+            <h2 className="text-lg font-semibold mb-2">Stores</h2>
+            {sortedStores.map(store => (
+              <div key={store.id} className="bg-white p-4 rounded shadow mb-4">
+                <p><strong>Name:</strong> {store.name}</p>
+                <p><strong>Address:</strong> {store.address}</p>
+                <p><strong>Average Rating:</strong> {getAverageRating(store.id)}</p>
+                <p><strong>Your Rating:</strong> {getUserRating(store.id)}</p>
+                <div className="mt-2">
+                  <input
+                    type="number"
+                    placeholder="Rate (1-5)"
+                    onChange={(e) => setRating(e.target.value)}
+                    className="p-2 border rounded mr-2"
+                  />
+                  <button
+                    onClick={() => handleSubmitRating(store.id)}
+                    className="bg-green-500 text-white p-2 rounded"
+                  >
+                    Submit Rating
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      // Store Owner View
+      if (currentUser.role === 'OWNER') {
+        const ownerStores = api.getStores().filter(store => store.owner_id === currentUser.id);
+        return (
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h1 className="text-2xl font-bold">Welcome, {currentUser.name}</h1>
+              <button onClick={() => setCurrentUser(null)} className="bg-red-500 text-white p-2 rounded">
+                Logout
+              </button>
+            </div>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">Update Password</h2>
+              <input
+                type="password"
+                placeholder="New Password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="p-2 border rounded mr-2"
+              />
+              <button onClick={handleUpdatePassword} className="bg-blue-500 text-white p-2 rounded">
+                Update Password
+              </button>
+            </div>
+            <h2 className="text-lg font-semibold mb-2">Your Stores</h2>
+            {ownerStores.map(store => (
+              <div key={store.id} className="bg-white p-4 rounded shadow mb-4">
+                <p><strong>Name:</strong> {store.name}</p>
+                <p><strong>Address:</strong> {store.address}</p>
+                <p><strong>Average Rating:</strong> {getAverageRating(store.id)}</p>
+                <h3 className="text-md font-semibold mt-2">Users Who Rated</h3>
+                {api.getRatings()
+                  .filter(r => r.store_id === store.id)
+                  .map(r => {
+                    const user = api.getUsers().find(u => u.id === r.user_id);
+                    return (
+                      <p key={r.id}>
+                        {user.name} - Rating: {r.rating}
+                      </p>
+                    );
+                  })}
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      return null;
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
